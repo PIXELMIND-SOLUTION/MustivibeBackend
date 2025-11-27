@@ -2,11 +2,11 @@ import mongoose from "mongoose";
 
 const connectDatabase = () => {
   mongoose
-    .connect(process.env.MONGO_URI, {
+    .connect(process.env.MONGO_URI)
+    .then(() => {
+      console.log("MongoDB Connected ✔");
     })
-    .then((data) => {
-      console.log(`Servers is connected with server: ${data.connection.host}`);
-    });
+    .catch((err) => console.log("DB Error:", err));
 };
 
 export default connectDatabase;
