@@ -24,4 +24,6 @@ router.get("/:roomId", Room.getRoomById);
 router.put("/:roomId", Room.updateRoom);
 router.delete("/:roomId", Room.deleteRoom);
 
+router.get("/nearby-users/:userId", Room.getNearbyUsersByUserId);
+
 export default router;

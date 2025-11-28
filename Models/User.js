@@ -42,20 +42,24 @@ const userSchema = new mongoose.Schema(
         enum: ['Point'],
         default: 'Point',
       },
-      coordinates: { type: [Number], default: [0.0, 0.0] },
+      coordinates: {
+        type: [Number],
+        default: [0.0, 0.0],
+      }
     },
 
-    // New flags
     hasCompletedProfile: { type: Boolean, default: false },
     hasLoggedIn: { type: Boolean, default: false },
 
-    // OTP specific fields
     otp: { type: String },
     token: { type: String },
     expiresAt: { type: Date }
   },
   { timestamps: true }
 );
+
+// ⭐ ADD THIS IMPORTANT LINE
+userSchema.index({ location: "2dsphere" });
 
 const User = mongoose.model('User', userSchema);
 export default User;
