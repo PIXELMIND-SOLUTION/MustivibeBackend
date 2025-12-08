@@ -85,7 +85,28 @@ const userSchema = new mongoose.Schema(
     isPermanentlyBlocked: {
       type: Boolean,
       default: false,
+    },
+    followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+    following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    isOnline: {
+      type: Boolean,
+      default: false
+    },
+    lastSeen: {
+      type: Date,
+      default: null
+    },
+    socketId: {
+      type: String,
+      default: null
     }
+    ,
+
+    lastActive: {
+      type: Date,
+      default: Date.now,
+    },
 
   },
   { timestamps: true }

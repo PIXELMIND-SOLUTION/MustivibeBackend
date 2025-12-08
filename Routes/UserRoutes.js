@@ -9,15 +9,31 @@ const upload = multer({ dest: "tmp/" });
 router.post("/send-otp", UserController.sendOtp);
 router.post("/verify-otp", UserController.verifyOtp);
 router.post("/resend-otp", UserController.resendOtp);
-router.put('/createprofile/:userId', upload.single("profileImage"), UserController.uploadUserProfileImage);
+router.put('/createprofile/:userId', upload.single("profileImage"), UserController.uploadUserProfile);
 router.put("/update-language/:userId", UserController.updateLanguage);
 router.put("/update-location", UserController.updateUserLocation);
 router.get('/getlocation/:userId', UserController.getUserLocation);
+router.put("/profileimage/:userId",upload.single("profileImage"), UserController.updateUserProfileImage);
+// 🔥 GET Profile Image
+router.get("/profile-image/:userId",
+  UserController.getUserProfileImage
+);
+router.delete(
+  "/profile-image/:userId",
+  UserController.deleteUserProfileImage
+);
 
 //get user details
 router.get("/users/all", UserController.getAllUsers);
 router.get("/users/:userId", UserController.getUserById);
 router.delete("/users/delete/:userId", UserController.deleteUser);
+
+
+//followers,following
+router.post("/follow", UserController.followUser);
+router.post("/unfollow", UserController.unfollowUser);
+router.get("/followers-following/:userId", UserController.getFollowersAndFollowing);
+router.get("/findfriends/:userId", UserController.findFriends);
 
 
 //room creation

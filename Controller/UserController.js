@@ -196,7 +196,7 @@ export const createUser = async (req, res) => {
 // ----------------------------------------------------
 // 📌 UPLOAD USER PROFILE IMAGE
 // ----------------------------------------------------
-export const uploadUserProfileImage = async (req, res) => {
+export const uploadUserProfile = async (req, res) => {
    try {
         const { userId } = req.params;
         const {
@@ -440,3 +440,369 @@ export const deleteUser = async (req, res) => {
         });
     }
 };
+
+// ----------------------------------------------------
+// 📌 UPDATE USER PROFILE IMAGE (using userId in params)
+// form-data key → profileImage
+// ----------------------------------------------------
+export const updateUserProfileImage = async (req, res) => {
+    try {
+    const { userId } = req.params;
+
+    // 1️⃣ Check userId
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId missing in URL params"
+      });
+    }
+
+    // 2️⃣ Check file upload
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "No file uploaded. Postman Cloud URLs are NOT supported. Upload a real file using 'Choose File' and key: profileImage"
+      });
+    }
+
+    // 3️⃣ Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // 4️⃣ Upload to Cloudinary
+    const upload = await cloudinary.uploader.upload(req.file.path, {
+      folder: "userProfileImages"
+    });
+
+    // 5️⃣ Remove temp file
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (err) {}
+
+    // 6️⃣ Save updated image
+    user.profileImage = upload.secure_url;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image updated successfully",
+      user
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+// ----------------------------------------------------
+// 📌 GET USER PROFILE IMAGE (using userId in params)
+// ----------------------------------------------------
+export const getUserProfileImage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId missing in URL params"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image fetched successfully",
+      profileImage: user.profileImage ? user.profileImage : null
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// ----------------------------------------------------
+// 📌 DELETE USER PROFILE IMAGE (using userId in params)
+// ----------------------------------------------------
+export const deleteUserProfileImage = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId missing in URL params"
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // ⛔ If no image exists
+    if (!user.profileImage) {
+      return res.status(400).json({
+        success: false,
+        message: "No profile image found to delete"
+      });
+    }
+
+    // Extract Cloudinary public_id
+    const publicId = user.profileImage
+      .split("/")
+      .slice(-1)[0]
+      .split(".")[0];
+
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(`userProfileImages/${publicId}`);
+
+    // Remove from DB
+    user.profileImage = null;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile image deleted successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+//follow and following
+export const followUser = async (req, res) => {
+  try {
+    const { userId, followId } = req.body;
+
+    if (!userId || !followId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and followId required"
+      });
+    }
+
+    if (userId === followId) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot follow yourself"
+      });
+    }
+
+    const user = await User.findById(userId);
+    const followUser = await User.findById(followId);
+
+    if (!user || !followUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Already following?
+    if (user.following.includes(followId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Already following this user"
+      });
+    }
+
+    user.following.push(followId);
+    followUser.followers.push(userId);
+
+    await user.save();
+    await followUser.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "User followed successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+export const unfollowUser = async (req, res) => {
+  try {
+    const { userId, unfollowId } = req.body;
+
+    if (!userId || !unfollowId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId and unfollowId required"
+      });
+    }
+
+    const user = await User.findById(userId);
+    const unfollowUser = await User.findById(unfollowId);
+
+    if (!user || !unfollowUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    user.following = user.following.filter(id => id.toString() !== unfollowId);
+    unfollowUser.followers = unfollowUser.followers.filter(id => id.toString() !== userId);
+
+    await user.save();
+    await unfollowUser.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "User unfollowed successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+export const getFollowersAndFollowing = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId)
+      .populate({
+        path: "followers",
+        select: "name nickname mobile profileImage language isOnline lastSeen"
+      })
+      .populate({
+        path: "following",
+        select: "name nickname mobile profileImage language isOnline lastSeen"
+      });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const formatUser = (u) => ({
+      _id: u._id,
+      name: u.name?.trim() !== "" ? u.name : (u.nickname || u.mobile),
+      profileImage: u.profileImage,
+      language: u.language,
+      isOnline: u.isOnline, // LIVE STATUS
+      lastSeen: u.lastSeen
+    });
+
+    return res.status(200).json({
+      success: true,
+      followers: user.followers.map(formatUser),
+      following: user.following.map(formatUser)
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+export const findFriends = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "userId required"
+      });
+    }
+
+    const user = await User.findById(userId)
+      .populate("followers", "name nickname mobile profileImage")
+      .populate("following", "name nickname mobile profileImage");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // -----------------------------------
+    // FRIENDS HISTORY (followers + following)
+    // -----------------------------------
+    let historySet = new Set();
+    user.followers?.forEach(u => historySet.add(u._id.toString()));
+    user.following?.forEach(u => historySet.add(u._id.toString()));
+
+    const historyUsers = await User.find({
+      _id: { $in: Array.from(historySet) }
+    }).select("name nickname mobile profileImage");
+
+    const formatUser = (u, isFriend) => ({
+      _id: u._id,
+      name: u.name?.trim() !== "" ? u.name : (u.nickname || u.mobile),
+      profileImage: u.profileImage,
+      isFriend
+    });
+
+    const friendsHistory = historyUsers.map(u =>
+      formatUser(u, true)
+    );
+
+    // -----------------------------------
+    // NEW FRIEND SUGGESTION USERS
+    // -----------------------------------
+    const randomUsers = await User.find({
+      _id: { $ne: userId, $nin: Array.from(historySet) }
+    })
+      .select("name nickname mobile profileImage")
+      .limit(20);
+
+    const newFriends = randomUsers.map(u =>
+      formatUser(u, false)
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Friends and new suggested friends fetched successfully",
+      friendsHistory,
+      newFriends
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
