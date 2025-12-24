@@ -972,6 +972,7 @@ export const confirmDeleteAccount = async (req, res) => {
       });
     }
 
+    
     await User.findByIdAndDelete(user._id);
 
     return res.status(200).json({
