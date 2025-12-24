@@ -960,10 +960,10 @@ export const confirmDeleteAccount = async (req, res) => {
   const { token } = req.params;
 
   try {
-    const user = await User.findOne({
+    User.findOne({
       deleteToken: token,
       deleteTokenExpiration: { $gt: Date.now() }
-    });
+    })
 
     if (!user) {
       return res.status(400).json({
