@@ -965,7 +965,7 @@ export const confirmDeleteAccount = async (req, res) => {
       deleteTokenExpiration: { $gt: Date.now() }
     })
 
-    if (!user) {
+    if (!User) {
       return res.status(400).json({
         success: false,
         message: "Invalid or expired delete link"
