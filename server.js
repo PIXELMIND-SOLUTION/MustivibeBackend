@@ -11,7 +11,7 @@ import { Server } from "socket.io";
 import connectDatabase from './db/connectDatabase.js';
 import User from "./Models/User.js";     // <-- IMPORTANT
 import userRoutes from "./Routes/UserRoutes.js";
-
+import Room from "./Routes/chatRoutes.js";
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -75,10 +75,55 @@ app.use(cookieParser());
 connectDatabase();
 
 app.use('/api/users', userRoutes);
+app.use('/api',Room);
 
 app.get('/', (req, res) => {
   res.json({ message: "Backend running..." });
 });
+
+io.on("connection", (socket) => {
+
+  socket.on("join-chat", ({ chatRoomId }) => {
+    socket.join(chatRoomId);
+  });
+
+  socket.on("emit-message", ({ chatRoomId, message }) => {
+    io.to(chatRoomId).emit("receive-message", message);
+  });
+
+  socket.on("message-delivered", ({ chatRoomId, messageId }) => {
+    io.to(chatRoomId).emit("messageDelivered", { messageId });
+  });
+
+  socket.on("message-read", ({ chatRoomId, messageId }) => {
+    io.to(chatRoomId).emit("messageRead", { messageId });
+  });
+
+  socket.on("emit-edit", ({ chatRoomId, messageId, newText }) => {
+    io.to(chatRoomId).emit("messageEdited", { messageId, newText });
+  });
+
+  socket.on("emit-delete", ({ chatRoomId, messageId, deleteFor }) => {
+    io.to(chatRoomId).emit("messageDeleted", { messageId, deleteFor });
+  });
+
+  socket.on("chat-blocked", ({ chatRoomId, blockedBy }) => {
+    io.to(chatRoomId).emit("chatBlocked", { blockedBy });
+  });
+
+  socket.on("chat-unblocked", ({ chatRoomId, unblockedBy }) => {
+    io.to(chatRoomId).emit("chatUnblocked", { unblockedBy });
+  });
+
+  socket.on("typing", ({ chatRoomId, userId }) => {
+    socket.to(chatRoomId).emit("userTyping", { userId });
+  });
+
+  socket.on("stop-typing", ({ chatRoomId, userId }) => {
+    socket.to(chatRoomId).emit("userStopTyping", { userId });
+  });
+});
+
 
 const PORT = process.env.PORT || 6060;
 server.listen(PORT, () => {

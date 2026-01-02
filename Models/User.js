@@ -67,7 +67,8 @@ const userSchema = new mongoose.Schema(
 
     warningsCount: {
       type: Number,
-      default: 0, // how many warnings user received
+      default: 0,
+      max: 5,
     },
 
     // TEMPORARY ACCOUNT BLOCK (24 hours after 3 warnings)

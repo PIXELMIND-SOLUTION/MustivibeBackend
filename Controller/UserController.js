@@ -3,8 +3,9 @@ import { generateToken, verifyToken } from "../config/jwtToken.js";
 import cloudinary from "../config/cloudinary.js";
 import fs from "fs";
 import nodemailer from 'nodemailer';
-import { sendSms } from "../config/sendSms.js";
+import {sendSms} from "../config/sendSms.js";
 import { randomBytes } from "crypto";
+import CommunicationRequest from "../Models/CommunicationRequest.js";
 
 
 
@@ -711,13 +712,13 @@ export const unfollowUser = async (req, res) => {
   }
 };
 
-
 export const getFollowersAndFollowing = async (req, res) => {
   try {
     const { userId } = req.params;
 
     const user = await User.findById(userId)
-      .select("name nickname mobile profileImage location followers following");
+      .populate("followers", "name nickname mobile profileImage language status")
+      .populate("following", "name nickname mobile profileImage language status");
 
     if (!user) {
       return res.status(404).json({
@@ -726,28 +727,28 @@ export const getFollowersAndFollowing = async (req, res) => {
       });
     }
 
-    // username logic: name -> nickname -> mobile
-    const username =
-      user.name && user.name.trim() !== ""
-        ? user.name
-        : user.nickname
-          ? user.nickname
-          : user.mobile;
-
-    const location = user.location
-      ? {
-        latitude: user.location.coordinates[1],
-        longitude: user.location.coordinates[0],
-      }
-      : null;
+    // helper for name priority
+    const formatUser = (u) => ({
+      _id: u._id,
+      name:
+        u.name && u.name.trim() !== ""
+          ? u.name
+          : u.nickname
+            ? u.nickname
+            : u.mobile,
+      profileImage: u.profileImage || null,
+      language: u.language || null,
+      status: u.status || "active"
+    });
 
     return res.status(200).json({
       success: true,
-      username,
-      profileImage: user.profileImage || null,
-      location,
-      followersCount: user.followers?.length || 0,
-      followingCount: user.following?.length || 0
+
+      followersCount: user.followers.length,
+      followingCount: user.following.length,
+
+      followers: user.followers.map(formatUser),
+      following: user.following.map(formatUser)
     });
 
   } catch (error) {
@@ -960,32 +961,240 @@ export const confirmDeleteAccount = async (req, res) => {
   const { token } = req.params;
 
   try {
-    User.findOne({
+    const user = await User.findOne({
       deleteToken: token,
       deleteTokenExpiration: { $gt: Date.now() }
-    })
+    });
 
-    if (!User) {
+    if (!user) {
       return res.status(400).json({
         success: false,
         message: "Invalid or expired delete link"
       });
     }
 
-    
     await User.findByIdAndDelete(user._id);
 
     return res.status(200).json({
       success: true,
-      message: "Your mastivides account has been permanently deleted"
+      message: "Your mastivibes account has been permanently deleted"
     });
 
   } catch (error) {
-    return res.status(200).json({
-      success: true,
-      message: "Your mastivides account has been permanently deleted"
+    return res.status(500).json({
+      success: false,
+      message: error.message
     });
   }
 };
 
+
+/* ---------------------------------------------
+   CREATE COMMUNICATION REQUEST
+--------------------------------------------- */
+export const createRequest = async (req, res) => {
+  try {
+    const { fromUser, toUser, type } = req.body;
+
+    if (!fromUser || !toUser || !type) {
+      return res.status(400).json({
+        success: false,
+        message: "fromUser, toUser, type required"
+      });
+    }
+
+    if (fromUser === toUser) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot request yourself"
+      });
+    }
+
+    const exists = await CommunicationRequest.findOne({
+      fromUser,
+      toUser,
+      type
+    });
+
+    if (exists) {
+      return res.status(400).json({
+        success: false,
+        message: "Request already exists",
+        status: exists.status
+      });
+    }
+
+    const request = await CommunicationRequest.create({
+      fromUser,
+      toUser,
+      type
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Communication request sent",
+      request
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// GET ALL COMMUNICATION REQUESTS (ADMIN / DEBUG)
+export const getAllRequests = async (req, res) => {
+  try {
+    const requests = await CommunicationRequest.find()
+      .populate("fromUser", "name mobile profileImage")
+      .populate("toUser", "name mobile profileImage")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: requests.length,
+      requests
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+/* ---------------------------------------------
+   GET ALL REQUESTS FOR USER
+--------------------------------------------- */
+export const getMyRequests = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const requests = await CommunicationRequest.find({
+      toUser: userId
+    })
+      .populate("fromUser", "name mobile profileImage")
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      success: true,
+      count: requests.length,
+      requests
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ---------------------------------------------
+   APPROVE / REJECT REQUEST
+--------------------------------------------- */
+export const handleRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { action } = req.body;
+
+    const request = await CommunicationRequest.findById(requestId);
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: "Request not found"
+      });
+    }
+
+    if (request.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        message: "User is blocked"
+      });
+    }
+
+    if (action === "approve") {
+      request.status = "approved";
+    } else if (action === "reject") {
+      request.status = "rejected";
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid action"
+      });
+    }
+
+    await request.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Request ${request.status}`,
+      request
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ---------------------------------------------
+   BLOCK USER
+--------------------------------------------- */
+export const blockUser = async (req, res) => {
+  try {
+    const { fromUser, toUser } = req.body;
+
+    const requests = await CommunicationRequest.updateMany(
+      { fromUser, toUser },
+      { isBlocked: true, status: "rejected" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "User blocked successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ---------------------------------------------
+   UNBLOCK USER
+--------------------------------------------- */
+export const unblockUser = async (req, res) => {
+  try {
+    const { fromUser, toUser } = req.body;
+
+    await CommunicationRequest.updateMany(
+      { fromUser, toUser },
+      { isBlocked: false }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "User unblocked successfully"
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/* ---------------------------------------------
+   DELETE REQUEST (CRUD)
+--------------------------------------------- */
+export const deleteRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    await CommunicationRequest.findByIdAndDelete(requestId);
+
+    return res.status(200).json({
+      success: true,
+      message: "Request deleted"
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
 

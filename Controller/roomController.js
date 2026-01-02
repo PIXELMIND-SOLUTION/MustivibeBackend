@@ -296,13 +296,20 @@ export const handleReport = async (req, res) => {
     const { action, adminComment } = req.body;
 
     const report = await Moderation.findById(reportId);
-    if (!report)
+    if (!report) {
       return res.status(404).json({
         success: false,
         message: "Report not found"
       });
+    }
 
     const user = await User.findById(report.reportedUser);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Reported user not found"
+      });
+    }
 
     // ❌ If already permanently blocked → cannot add more warnings
     if (user.isPermanentlyBlocked) {
@@ -312,7 +319,17 @@ export const handleReport = async (req, res) => {
       });
     }
 
+    // 🚫 Prevent re-approving the same report
+    if (report.status === "approved") {
+      return res.status(400).json({
+        success: false,
+        message: "This report is already approved"
+      });
+    }
+
+    // -------------------------
     // REJECT REPORT
+    // -------------------------
     if (action === "reject") {
       report.status = "rejected";
       report.adminComment = adminComment || "Rejected by admin";
@@ -322,31 +339,44 @@ export const handleReport = async (req, res) => {
       return res.status(200).json({
         success: true,
         message: "Report rejected",
-        report,
+        report
       });
     }
 
+    // -------------------------
     // APPROVE REPORT → ADD WARNING
+    // -------------------------
     if (action === "approve") {
-      // 🚫 Prevent warnings beyond 5
+
+      // 🚫 Hard limit guard (MAX = 5)
       if (user.warningsCount >= 5) {
-        return res.status(400).json({
-          success: false,
-          message: "Maximum warning limit reached (5). User is permanently blocked.",
+        user.warningsCount = 5;
+        user.isPermanentlyBlocked = true;
+        user.isTemporarilyBlocked = false;
+        user.temporaryBlockExpiresAt = null;
+
+        await user.save();
+
+        return res.status(200).json({
+          success: true,
+          message: "Maximum warning limit reached (5). User permanently blocked."
         });
       }
 
+      // approve report
       report.status = "approved";
       report.adminComment = adminComment || "Approved by admin";
       report.isWarning = true;
 
-      // Increase warning count
+      // Increase warning count (safe now)
       user.warningsCount += 1;
 
       // TEMPORARY BLOCK FOR WARNING 3 & 4
       if (user.warningsCount === 3 || user.warningsCount === 4) {
         user.isTemporarilyBlocked = true;
-        user.temporaryBlockExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        user.temporaryBlockExpiresAt = new Date(
+          Date.now() + 24 * 60 * 60 * 1000
+        );
       }
 
       // PERMANENT BLOCK AT WARNING 5
@@ -369,16 +399,18 @@ export const handleReport = async (req, res) => {
         userStatus: {
           isTemporarilyBlocked: user.isTemporarilyBlocked,
           temporaryBlockExpiresAt: user.temporaryBlockExpiresAt,
-          isPermanentlyBlocked: user.isPermanentlyBlocked,
+          isPermanentlyBlocked: user.isPermanentlyBlocked
         },
-        report,
+        report
       });
     }
 
+    // -------------------------
     // INVALID ACTION
+    // -------------------------
     return res.status(400).json({
       success: false,
-      message: "Invalid action. Use approve/reject.",
+      message: "Invalid action. Use approve/reject."
     });
 
   } catch (error) {
@@ -388,6 +420,7 @@ export const handleReport = async (req, res) => {
     });
   }
 };
+
 
 // ---------------------------------------------------
 // 3️⃣ GET ALL REPORTS
@@ -504,3 +537,51 @@ export const adminDeleteUser = async (req, res) => {
     });
   }
 };
+
+export const getUserReportSummary = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // check user exists
+    const user = await User.findById(userId).select(
+      "name mobile warningsCount isTemporarilyBlocked isPermanentlyBlocked"
+    );
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // all reports against this user
+    const reports = await Moderation.find({ reportedUser: userId })
+      .populate("reportedBy", "name mobile")
+      .sort({ createdAt: -1 });
+
+    // warnings only
+    const warnings = reports.filter(r => r.isWarning === true);
+
+    return res.status(200).json({
+      success: true,
+      user: {
+        userId: user._id,
+        name: user.name,
+        mobile: user.mobile,
+        warningsCount: user.warningsCount,
+        isTemporarilyBlocked: user.isTemporarilyBlocked,
+        isPermanentlyBlocked: user.isPermanentlyBlocked
+      },
+      totalReports: reports.length,
+      totalWarnings: warnings.length,
+      reports,
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+

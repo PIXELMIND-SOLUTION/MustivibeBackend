@@ -41,6 +41,19 @@ router.get("/followers-following/:userId", UserController.getFollowersAndFollowi
 router.get("/findfriends/:userId", UserController.findFriends);
 
 
+//communicationRoutes
+router.post("/request", UserController.createRequest);
+// GET ALL REQUESTS
+router.get("/all-requests", UserController.getAllRequests);
+
+router.get("/my-requests/:userId", UserController.getMyRequests);
+router.put("/handle/:requestId", UserController.handleRequest);
+router.post("/block", UserController.blockUser);
+router.post("/unblock", UserController.unblockUser);
+router.delete("/:requestId", UserController.deleteRequest);
+
+
+
 //room creation
 router.post("/create", Room.createRoom);
 router.get("/all", Room.getAllRooms);
@@ -60,10 +73,10 @@ router.put("/admin/handle/:reportId", Room.handleReport);
 router.get("/admin/reports", Room.getAllReports);
 router.get("/admin/warnings", Room.getAllWarnings);
 router.get("/admin/report/:reportId", Room.getReportById);
+router.get("/admin/user-reports/:userId", Room.getUserReportSummary);
 router.delete("/admin/delete/:reportId", Room.deleteReport);
 // ADMIN HARD DELETE USER
 router.delete("/admin/delete-user/:userId", Room.adminDeleteUser);
-
 
 
 export default router;
