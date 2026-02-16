@@ -24,6 +24,10 @@ router.get("/referral", admin.getAllReferralCoins);        // get all
 router.get("/referral/:id", admin.getReferralCoinsById);   // get by id
 router.put("/referral/:id", admin.updateReferralCoinsById);// update by id
 router.delete("/referral/:id", admin.deleteReferralCoins); // delete
+router.post("/createcointorupee", admin.createCoinToRupee);
+router.get("/getcointorupee", admin.getCoinToRupee);
+router.get('/coindeductionrules', admin.getAllCoinDeductionRules);
+router.post('/coindeductionrule', admin.createCoinDeductionRule);
 
 
 export default router;

@@ -39,6 +39,7 @@ router.get(
 
 router.get("/randomusers/:userId", ChatController.getRandomUsers);
 
+router.get("/onlinerandomusers/:userId", ChatController.getRandomOnlineUser);
 
 /* ================================
    GET PENDING CHAT REQUESTS

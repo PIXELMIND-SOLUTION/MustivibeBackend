@@ -1,55 +1,102 @@
-// sendSimplePush.js
-import admin from "./firebase.js"; // Adjust path to your Firebase Admin SDK setup
+// import admin from "./firebase.js";
+
+// /**
+//  * Sends a push notification via FCM using a single token
+//  * @param {string} fcmToken - Device FCM token
+//  * @param {string} title - Notification title
+//  * @param {string} body - Notification body
+//  * @param {Object} data - Optional data payload
+//  */
+// const sendSimplePush = async ({ fcmToken, title, body, data = {} }) => {
+//   if (!fcmToken) return; // Token nahi hai, skip
+
+//   const stringifiedData = Object.fromEntries(
+//     Object.entries(data).map(([k, v]) => [k, v.toString()])
+//   );
+
+//   const message = {
+//     token: fcmToken,
+//     notification: { title, body },
+//     data: stringifiedData,
+//     android: { priority: "high" },
+//     apns: { headers: { "apns-priority": "10" } },
+//   };
+
+//   try {
+//     const response = await admin.messaging().send(message);
+//     console.log("🔔 Push sent successfully:", response);
+//     return response;
+//   } catch (error) {
+//     console.error("❌ Push failed:", error);
+//     // Error throw kar rahe hain, par DB update ya token removal nahi
+//     throw error;
+//   }
+// };
+
+// export default sendSimplePush;
+
+
+
+import admin from "./firebase.js";
 
 /**
- * Sends a push notification via Firebase Cloud Messaging
- * @param {Object} params
- * @param {string} params.fcmToken - Recipient device FCM token
- * @param {string} params.title - Notification title
- * @param {string} params.body - Notification body
- * @param {Object} [params.data={}] - Optional data payload (must be string values)
+ * Sends a push notification via FCM using a single token
+ * @param {string} fcmToken - Device FCM token
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body
+ * @param {Object} data - Optional data payload
  */
 const sendSimplePush = async ({ fcmToken, title, body, data = {} }) => {
-  if (!fcmToken) {
-    console.warn("⚠️ No FCM token provided, skipping push notification.");
-    return;
-  }
+  if (!fcmToken) return;
 
-  // Convert all data values to strings (Firebase requirement)
+  // Ensure all data values are stringified
   const stringifiedData = Object.fromEntries(
-    Object.entries(data).map(([k, v]) => [k, v.toString()])
+    Object.entries(data).map(([key, value]) => [key, value.toString()])
   );
 
+  // Construct the notification message
   const message = {
-    token: fcmToken,
+    token: fcmToken,  // Target device token
+
+    // Notification content for the user
     notification: {
-      title,
-      body,
+      title,  // Title of the notification
+      body,   // Body of the notification
     },
+
+    // Optional data payload
     data: stringifiedData,
+
+    // Android-specific settings
     android: {
-      priority: "high",
+      priority: "high",  // High priority for immediate delivery
+      notification: {
+        channelId: "high_importance_channel",  // The channel must exist in the app
+        priority: "high",  // Ensures heads-up notifications on Android
+        defaultSound: true,  // Play default sound
+        defaultVibrateTimings: true,  // Default vibration pattern
+      },
     },
+
+    // APNs (Apple Push Notification service) settings for iOS
     apns: {
       headers: {
-        "apns-priority": "10",
+        "apns-priority": "10",  // Ensures immediate delivery on iOS (10 is high priority)
       },
     },
   };
 
-  // Log the payload for debugging
-  console.log("📤 Sending FCM message:", JSON.stringify(message, null, 2));
-
+  // Send the push notification
   try {
     const response = await admin.messaging().send(message);
     console.log("🔔 Push sent successfully:", response);
     return response;
   } catch (error) {
-    console.error("❌ Push failed in helper:", error);
-
-    // Throw error so controller can catch and log
+    console.error("❌ Push failed:", error);
+    // Throw error to handle failures (e.g., retry or logging)
     throw error;
   }
 };
 
 export default sendSimplePush;
+

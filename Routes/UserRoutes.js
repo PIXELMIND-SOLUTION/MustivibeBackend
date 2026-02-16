@@ -4,7 +4,8 @@ import * as UserController from "../Controller/UserController.js";
 import * as RoomController from "../Controller/roomController.js";  // ✅ RENAMED
 
 const router = express.Router();
-const upload = multer({ dest: "tmp/" }); 
+//const upload = multer({ dest: "tmp/" }); 
+import upload from "../config/multerConfig.js";
 
 /* ================= AUTH / OTP ================= */
 router.post("/send-otp", UserController.sendOtp);
@@ -78,10 +79,32 @@ router.get("/getusercoins/:userId", UserController.getUserCoins);               
 router.post("/sendcallingrequest", UserController.sendCallingRequest);
 
 // Accept / Reject / End call
-router.put("/updatecallingstatus/:callId", UserController.updateCallStatus);
+//router.put("/updatecallingstatus/:callId", UserController.updateCallStatus);
 
 // Get all calls for a user
 router.get("/allusercallsrecord/:userId", UserController.getUserCalls);
+
+
+// Zego Webhook endpoints
+router.post('/webhook/room-create', UserController.handleRoomCreate);
+router.post('/webhook/user-joined', UserController.handleUserJoined);      // Room logged in
+router.post('/webhook/user-left', UserController.handleUserLeft);          // Room logged out
+router.post('/webhook/room-closed', UserController.handleRoomClosed);      // Room close
+router.post('/webhook/stream-created', UserController.handleStreamCreated); // Stream created
+router.post('/webhook/stream-closed', UserController.handleStreamClosed);
+
+router.get("/getmyreffralcode/:userId", UserController.getMyReferralCode);               // Get my feedback
+router.get("/gettransactionhistory/:userId", UserController.getUserTransactionHistory);
+router.get("/myreferred-reward/:userId", UserController.getReferredRewardOnly);
+router.post("/sendredeemrequest", UserController.createRedeemRequest);
+router.get("/getallredeemrequest", UserController.getAllRedeemRequests);
+router.get("/getmyredeemrequest/:userId", UserController.getUserRedeemRequests);
+router.put("/updateredeemrequest/:redeemId", UserController.updateRedeemRequestStatus);
+
+router.post("/joinroom", RoomController.joinRoom);  // ✅ CHANGED
+router.get("/getnotification/:userId", UserController.getNotifications);
+router.delete("/userdltnot/:userId", RoomController.deleteNotifications);
+
 
 
 export default router;

@@ -16,10 +16,16 @@ import chatRoutes from './Routes/chatRoutes.js';
 import Coins from './Routes/adminRoutes.js';
 import User from './Models/User.js';
 import Message from './Models/Message.js';
+import cron from 'node-cron'; // Importing node-cron package
+import Room from './Models/RoomModel.js';
+import { parse, format } from 'date-fns'; // Import date-fns
+
 
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+
 
 const app = express();
 app.use(cors());
@@ -27,6 +33,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use(cookieParser());
+
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 
 app.use('/api/users', userRoutes);
 app.use('/api', chatRoutes);
@@ -146,6 +155,50 @@ io.on('connection', (socket) => {
   });
 });
 
+
+// Cron Job for auto-deleting expired rooms every minute
+// Cron Job for auto-deleting expired rooms every minute
+cron.schedule('* * * * *', async () => {
+  try {
+    console.log("🕑 Running cron job to check for expired rooms...");
+
+    const now = new Date(); // Current time
+
+    // Find rooms where the startDateTime is in the past
+    const expiredRooms = await Room.find({
+      startDateTime: { $lte: now }, // Rooms that started in the past
+    }).lean();
+
+    if (expiredRooms.length > 0) {
+      for (const room of expiredRooms) {
+        // Parse the startDateTime properly using date-fns
+        const startDateTime = parse(room.startDateTime, 'dd-MM-yyyy hh:mm a', new Date()); 
+
+        // Calculate the actual end time of the room (startDateTime + duration + 5 mins grace)
+        const roomEndTime = new Date(startDateTime);
+        roomEndTime.setMinutes(roomEndTime.getMinutes() + room.duration + 5); // Adding duration and grace period
+        
+        // Log the room's calculated end time
+        console.log(`🕒 Room ${room._id} has start time: ${format(startDateTime, 'dd-MM-yyyy hh:mm a')}`);
+        console.log(`🕒 Room ${room._id} has duration: ${room.duration} minutes`);
+        console.log(`🕒 Room ${room._id} will expire at: ${format(roomEndTime, 'dd-MM-yyyy hh:mm a')}`);
+        
+        // Check if the current time has passed the room's end time
+        if (now >= roomEndTime) {
+          await Room.findByIdAndDelete(room._id);
+          console.log(`🗑️ Deleted expired room: ${room._id}`);
+        } else {
+          // Log that the room is not expired yet
+          console.log(`🕒 Room ${room._id} is not expired yet. Expiry time: ${format(roomEndTime, 'dd-MM-yyyy hh:mm a')}`);
+        }
+      }
+    } else {
+      console.log("🕑 No expired rooms found.");
+    }
+  } catch (err) {
+    console.error("❌ Error during cron job:", err);
+  }
+});
 // Server listening on PORT
 const PORT = process.env.PORT || 6060;
 server.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`));

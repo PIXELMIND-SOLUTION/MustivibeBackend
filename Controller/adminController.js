@@ -3,6 +3,8 @@ import CoinPackage from "../Models/CoinPackage.js";
 import Moderation from "../Models/Warnig.js";
 import User from "../Models/User.js";
 import AdminSettings from "../Models/AdminSettings.js";
+import CoinToRupee from "../Models/CoinToRupee.js";
+import CoinDeductionRule from "../Models/CoinDeductionRule.js";
 
 /* ================= CREATE ================= */
 export const createCoinPackage = async (req, res) => {
@@ -565,3 +567,126 @@ export const deleteReferralCoins = async (req, res) => {
     });
   }
 };
+
+
+
+// Create a new Coin to Rupee Ratio
+export const createCoinToRupee = async (req, res) => {
+  try {
+    const { coins, rupees } = req.body;
+
+    if (!coins || !rupees) {
+      return res.status(400).json({
+        success: false,
+        message: "coins and rupees are required"
+      });
+    }
+
+    // Create new CoinToRupee entry
+    const newRatio = new CoinToRupee({
+      coins,
+      rupees,
+    });
+
+    // Save the entry
+    await newRatio.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Coin to Rupee ratio created successfully",
+      newRatio
+    });
+
+  } catch (error) {
+    console.error("createCoinToRupee error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get the Coin to Rupee ratio
+export const getCoinToRupee = async (req, res) => {
+  try {
+    const ratio = await CoinToRupee.findOne().sort({ createdAt: -1 }); // Get the most recent ratio
+
+    if (!ratio) {
+      return res.status(404).json({
+        success: false,
+        message: "Coin to Rupee ratio not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Coin to Rupee ratio fetched successfully",
+      ratio
+    });
+
+  } catch (error) {
+    console.error("getCoinToRupee error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+// 1. Get all Coin Deduction Rules
+export const getAllCoinDeductionRules = async (req, res) => {
+  try {
+    const rules = await CoinDeductionRule.find();
+    return res.status(200).json({
+      success: true,
+      message: "Fetched all coin deduction rules",
+      rules,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching coin deduction rules:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+// 2. Create a new Coin Deduction Rule (admin functionality)
+export const createCoinDeductionRule = async (req, res) => {
+  try {
+    const { type, duration, coins } = req.body;
+
+    if (!type || !duration || !coins) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    // Check if the rule already exists
+    const existingRule = await CoinDeductionRule.findOne({ type, duration });
+    if (existingRule) {
+      return res.status(400).json({ success: false, message: "This rule already exists" });
+    }
+
+    // Create a new rule
+    const newRule = await CoinDeductionRule.create({
+      type,
+      duration,
+      coins,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Coin Deduction Rule created successfully",
+      rule: newRule,
+    });
+  } catch (error) {
+    console.error("❌ Error creating coin deduction rule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+

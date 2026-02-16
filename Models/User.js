@@ -6,7 +6,7 @@ const userSchema = new mongoose.Schema(
     name: { type: String },
     email: { type: String },
     password: { type: String },
-    mobile: { type: String, unique: true },
+    mobile: { type: String, },
     profileImage: { type: String },
     nickname: { type: String },
     gender: { type: String },
@@ -17,7 +17,6 @@ const userSchema = new mongoose.Schema(
     },
     myReferralCode: {
       type: String,
-      unique: true,
       sparse: true,  // allows multiple null values
       default: null,
     },
@@ -112,6 +111,39 @@ const userSchema = new mongoose.Schema(
     following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
           fcmToken: { type: String, default: null }, // ✅ NEW FIELD
 
+    transactionhistyry: [
+  {
+    type: {
+      type: String,
+      enum: ["credited", "debited"],
+    },
+    coins: {
+      type: Number,
+    },
+    amount: {
+      type: Number,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }
+],
+
+ notifications: [
+    {
+      title: { type: String, },
+      body: { type: String, },
+      type: { type: String, }, // e.g., "follow", "unfollow", "room_created", etc.
+      createdAt: { type: Date, default: Date.now },
+    },
+  ],
+
+// User Schema में ये field add करें:
+myreferredrewarded: {
+  type: Number,
+  default: 0
+},
 
     isOnline: {
       type: Boolean,
@@ -124,8 +156,8 @@ const userSchema = new mongoose.Schema(
     socketId: {
       type: String,
       default: null
-    }
-    ,
+    },
+
 
     lastActive: {
       type: Date,

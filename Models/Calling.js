@@ -11,7 +11,7 @@ const callingSchema = new mongoose.Schema(
       ref: "User",
     },
     callerId: {
-      type: String, // Could be Zego Room ID
+      type: String,
     },
     callType: {
       type: String,
@@ -21,20 +21,71 @@ const callingSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    
+    // 🔥 CRITICAL ZEGO FIELDS
+    zegoRoomId: {
+      type: String,
+      unique: true,
+      index: true,
+    },
+    senderZegoId: {
+      type: String,
+      default: "",
+    },
+    receiverZegoId: {
+      type: String,
+      default: "",
+    },
+    roomCreatedAt: {
+      type: Date,
+      default: null,
+    },
+    
     fcmToken: {
       type: String,
       default: null,
     },
     status: {
       type: String,
-      enum: ["initiated", "ringing", "active", "RINGING", "accepted", "rejected", "ended", "missed", "ACTIVE", "ENDED", "REJECTED", "MISSED", "FAILED"],
-      default: "initiated",
+      enum: ["RINGING", "ACTIVE", "ENDED", "REJECTED", "MISSED", "FAILED"],
+      default: "RINGING",
     },
     type: {
       type: String,
-      enum: ["incoming_call", "call_accepted", "call_rejected", "call_ended", "call_missed", "call_failed"],
+      enum: [
+        "incoming_call", 
+        "call_accepted", 
+        "call_rejected", 
+        "call_rejected_timeout", 
+        "call_ended_by_sender", 
+        "call_ended_by_receiver", 
+        "call_ended_room_closed",
+        "call_ended",
+        "call_missed",
+        "call_failed"
+      ],
       default: "incoming_call",
     },
+      femaleCredited: {
+    type: Number,
+    default: 0
+  },
+  adminCredited: {
+    type: Number,
+    default: 0
+  },
+  isReceiverFemale: {
+    type: Boolean,
+    default: false
+  },
+  senderGender: {
+    type: String,
+    enum: ['male', 'female', 'other']
+  },
+  receiverGender: {
+    type: String,
+    enum: ['male', 'female', 'other']
+  },
     startedAt: {
       type: Date,
       default: null,
@@ -44,16 +95,39 @@ const callingSchema = new mongoose.Schema(
       default: null,
     },
     duration: {
-      type: Number,
-      default: 0, // seconds
+      type: Number, // in seconds
+      default: 0,
     },
     coinsDeducted: {
       type: Number,
       default: 0,
     },
+    
+    // Optional: Additional tracking
+    isVideoCall: {
+      type: Boolean,
+      default: false,
+    },
+    serverRegion: {
+      type: String,
+      default: "",
+    },
+    zegoAppId: {
+      type: String,
+      default: "",
+    },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    indexes: [
+      { zegoRoomId: 1 },
+      { senderId: 1, createdAt: -1 },
+      { receiverId: 1, createdAt: -1 },
+      { status: 1 }
+    ]
+  }
 );
 
 const Calling = mongoose.model("Calling", callingSchema);
+
 export default Calling;

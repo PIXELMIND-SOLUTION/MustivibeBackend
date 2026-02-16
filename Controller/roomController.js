@@ -1,41 +1,131 @@
 import Room from "../Models/RoomModel.js";
 import Moderation from "../Models/Warnig.js";
 import User from "../Models/User.js";
+import AdminSettings from "../Models/AdminSettings.js";
+import CoinDeductionRule from "../Models/CoinDeductionRule.js";
+import sendSimplePush from "../utils/sendSimplePush.js";
 
 // ----------------------------------------------------
 // CREATE ROOM
 // ----------------------------------------------------
+
+
+// 3. Get Coin Deduction Rule for a specific type and duration
+export const getCoinDeductionRuleForRoom = async (type, duration) => {
+  try {
+    const rule = await CoinDeductionRule.findOne({ type, duration });
+
+    if (!rule) {
+      throw new Error(`No coin deduction rule found for ${type} room with ${duration} minutes`);
+    }
+
+    return rule.coins;
+  } catch (error) {
+    throw new Error(`Error fetching rule: ${error.message}`);
+  }
+};
+
 export const createRoom = async (req, res) => {
   try {
-    const { userId, type, tag, startDateTime } = req.body;
+    const { userId, adminId, type, tag, startDateTime, duration } = req.body;
 
-    if (!userId || !type || !tag || !startDateTime) {
-      return res.status(400).json({
-        success: false,
-        message: "userId, type, tag & startDateTime required",
-      });
-    }
-
+    // Check if the user exists
     const userExists = await User.findById(userId);
     if (!userExists) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // Deduct coins if the user is creating the room (not admin)
+    if (userId !== adminId) {  // Only deduct if user is creating the room
+      let coinsToDeduct = 0;
+
+      // Fetch the coin deduction rule based on room type and duration
+      try {
+        coinsToDeduct = await getCoinDeductionRuleForRoom(type, duration);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+
+      if (coinsToDeduct > 0) {
+        // Check if the user has enough coins
+        if (userExists.totalCoins < coinsToDeduct) {
+          return res.status(400).json({ success: false, message: `Insufficient coins. You have only ${userExists.totalCoins} coins` });
+        }
+
+        // Deduct coins from the user's totalCoins
+        userExists.totalCoins -= coinsToDeduct;
+
+        // Create a transaction entry
+        const transactionEntry = {
+          type: 'debited',
+          coins: coinsToDeduct,
+          amount: coinsToDeduct, // Assuming 1 coin = 1 unit currency, adjust accordingly
+        };
+
+        // Push the transaction to the user's history
+        userExists.transactionhistyry.push(transactionEntry);
+
+        // Save the updated user data
+        await userExists.save();
+
+        console.log(`✅ Deducted ${coinsToDeduct} coins from User ${userId} for creating ${type} room with duration ${duration} minutes`);
+      }
+    }
+
+    // Create the room
     const room = await Room.create({
-      userId,
+      userId,        // room creator (User)
+      adminId,       // room admin (Admin)
       type,
       tag,
-      startDateTime, // ✅ STRING
+      startDateTime, // STRING
+      duration,      // minutes
     });
 
     console.log("✅ Room created:", {
       roomId: room._id,
       userId,
+      adminId,
       startDateTime,
+      duration,
     });
+
+    // Add a notification for the user who created the room
+    const roomCreatedNotification = {
+      title: "Room Created Successfully 🎉",
+      body: `Your ${type} room has been created successfully! It will start at ${startDateTime}.`,
+      type: "room_created",
+      createdAt: new Date(),
+    };
+
+    // Push notification to the user's notifications array
+    await User.updateOne({ _id: userId }, { $push: { notifications: roomCreatedNotification } });
+
+    // Send push notifications to all users (or based on criteria)
+    const users = await User.find();  // Fetch all users (you can modify this query as needed)
+
+    for (const user of users) {
+      if (user.fcmToken) {  // Ensure the user has a valid FCM token
+        try {
+          // Send a push notification to the user
+          await sendSimplePush({
+            fcmToken: user.fcmToken,
+            title: "New Room Created!",
+            body: `A new room of type ${type} has been created. Join now!`,
+            data: {
+              roomId: room._id,
+              roomType: type,
+              startDateTime,
+              duration,
+            },
+          });
+        } catch (error) {
+          console.error(`❌ Failed to send push notification to user: ${user._id}, Error: ${error.message || error}`);
+        }
+      } else {
+        console.log(`No FCM Token for user: ${user._id}`);
+      }
+    }
 
     return res.status(201).json({
       success: true,
@@ -52,7 +142,6 @@ export const createRoom = async (req, res) => {
     });
   }
 };
-
 
 export const updateRoomByUser = async (req, res) => {
   try {
@@ -125,12 +214,64 @@ export const updateRoomByUser = async (req, res) => {
 };
 
 
+
+export const autoDeleteRoom = (room) => {
+  try {
+    const { _id, startDateTime, duration } = room;
+
+    if (!startDateTime || !duration) return;
+
+    // "09-02-2026 06:25 PM"
+    const [datePart, timePart, meridian] = startDateTime.split(" ");
+    const [day, month, year] = datePart.split("-").map(Number);
+    let [hours, minutes] = timePart.split(":").map(Number);
+
+    // 12h → 24h
+    if (meridian === "PM" && hours !== 12) hours += 12;
+    if (meridian === "AM" && hours === 12) hours = 0;
+
+    const startTime = new Date(year, month - 1, day, hours, minutes);
+
+    // duration + 5 minutes
+    const deleteAt = new Date(
+      startTime.getTime() + (duration + 5) * 60 * 1000
+    );
+
+    const delay = deleteAt.getTime() - Date.now();
+
+    if (delay <= 0) {
+      Room.findByIdAndDelete(_id)
+        .then(() => console.log(`🗑️ Room deleted (expired): ${_id}`))
+        .catch(err => console.error("❌ Delete error:", err));
+      return;
+    }
+
+    console.log(`⏰ Room ${_id} scheduled for delete at ${deleteAt}`);
+
+    setTimeout(async () => {
+      try {
+        await Room.findByIdAndDelete(_id);
+        console.log(`🗑️ Room auto-deleted: ${_id}`);
+      } catch (err) {
+        console.error("❌ Auto delete failed:", err);
+      }
+    }, delay);
+
+  } catch (err) {
+    console.error("❌ autoDeleteRoom error:", err);
+  }
+};
 // ----------------------------------------------------
 // GET ALL ROOMS
 // ----------------------------------------------------
 export const getAllRooms = async (req, res) => {
   try {
     const rooms = await Room.find().populate("userId");
+
+    // 🔥 Background auto-delete logic (NO response change)
+    rooms.forEach(room => {
+      autoDeleteRoom(room);
+    });
 
     return res.status(200).json({
       success: true,
@@ -146,7 +287,6 @@ export const getAllRooms = async (req, res) => {
     });
   }
 };
-
 // ----------------------------------------------------
 // GET ROOM BY ID
 // ----------------------------------------------------
@@ -503,6 +643,146 @@ export const deleteUserRoom = async (req, res) => {
 
   } catch (error) {
     console.error("❌ deleteRoom error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+export const joinRoom = async (req, res) => {
+  try {
+    const { roomId, users } = req.body;
+
+    // Find the room by roomId
+    const room = await Room.findById(roomId);
+    if (!room) {
+      return res.status(404).json({ success: false, message: 'Room not found' });
+    }
+
+    // Loop through each user who wants to join and deduct coins
+    for (const userId of users) {
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: `User ${userId} not found` });
+      }
+
+      // Fetch coin deduction rule based on room type and duration
+      let coinsToDeduct = 0;
+      try {
+        coinsToDeduct = await getCoinDeductionRuleForRoom(room.type, room.duration);
+      } catch (error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+
+      // Check if the user has enough coins
+      if (user.totalCoins < coinsToDeduct) {
+        return res.status(400).json({ success: false, message: `User ${userId} has insufficient coins` });
+      }
+
+      // Deduct coins from the user's totalCoins
+      user.totalCoins -= coinsToDeduct;
+
+      // Create a transaction entry for the user
+      const transactionEntry = {
+        type: 'debited',
+        coins: coinsToDeduct,
+        amount: coinsToDeduct,
+      };
+
+      // Push the transaction to the user's transaction history
+      user.transactionhistyry.push(transactionEntry);
+
+      // Save the updated user data
+      await user.save();
+
+      console.log(`✅ Deducted ${coinsToDeduct} coins from User ${userId} for joining room ${roomId}`);
+
+      // Add user details to the room's joinedUsers array
+      room.joinedUsers.push({
+        userId,
+        name: user.name,
+        nickname: user.nickname,
+        gender: user.gender,
+        mobile: user.mobile,
+      });
+
+      // Send a push notification to the user who joined the room
+      if (user.fcmToken) {
+        try {
+          await sendSimplePush({
+            fcmToken: user.fcmToken,
+            title: 'Joined Room Successfully!',
+            body: `You have successfully joined the room of type ${room.type}. Enjoy!`,
+            data: {
+              roomId: room._id,
+              roomType: room.type,
+              startDateTime: room.startDateTime,
+              duration: room.duration,
+            },
+          });
+        } catch (error) {
+          console.error(`❌ Failed to send push notification to user: ${user._id}, Error: ${error.message || error}`);
+        }
+      }
+    }
+
+    // Save the updated room data
+    await room.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Users successfully joined the room and coins deducted',
+      room,
+    });
+  } catch (error) {
+    console.error('❌ joinRoom error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message,
+    });
+  }
+};
+
+
+
+// Delete Notification Controller
+// Delete Notification Controller
+// Delete Notifications Controller (multiple)
+export const deleteNotifications = async (req, res) => {
+  try {
+    const { userId } = req.params;  // userId should be passed in the URL params
+    const { notificationIds } = req.body;  // Array of notificationIds to be deleted
+
+    if (!userId || !notificationIds || notificationIds.length === 0) {
+      return res.status(400).json({ success: false, message: "userId and notificationIds are required" });
+    }
+
+    // Find the user by userId
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Remove the notifications that match the provided notificationIds
+    user.notifications = user.notifications.filter(
+      notif => !notificationIds.includes(notif._id.toString())
+    );
+
+    // Save the updated user document
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `${notificationIds.length} notification(s) deleted successfully`,
+    });
+
+  } catch (error) {
+    console.error("❌ deleteNotifications error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

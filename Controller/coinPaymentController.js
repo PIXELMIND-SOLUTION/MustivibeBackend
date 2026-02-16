@@ -25,40 +25,62 @@ export const createCoinOrder = async (req, res) => {
       });
     }
 
-    // 🔹 Capture payment
-    const payment = await razorpay.payments.capture(
-      transactionId,
-      pack.price * 100,
-      "INR"
-    );
+    // 🔥 NO RAZORPAY CAPTURE
+    // 🔥 NO EXISTING PAYMENT CHECK
+    // 🔥 EVERY REQUEST = NEW TRANSACTION
 
-    if (payment.status !== "captured") {
-      return res.status(400).json({
-        success: false,
-        message: "Payment capture failed"
-      });
-    }
-
-    // 🔹 Save payment with COMPLETED status
+    // 🔹 Save payment (NEW every time)
     await CoinPayment.create({
       userId,
       packageId,
       razorpayPaymentId: transactionId,
       amount: pack.price,
       coins: pack.coins,
-      status: "completed" // ✅ updated
+      status: "completed"
     });
 
-    // 🔹 Add coins to user
+    // 🔹 Transaction history
+    const historyEntry = {
+      type: "credited",
+      coins: pack.coins,
+      amount: pack.price,
+      transactionId
+    };
+
+    // 🔹 Add coins + history
     const user = await User.findByIdAndUpdate(
       userId,
-      { $inc: { totalCoins: pack.coins } },
+      {
+        $inc: { totalCoins: pack.coins },
+        $push: { transactionhistyry: historyEntry }
+      },
       { new: true }
     );
 
+    // 🔹 Create notification for user
+    const coinAddedNotification = {
+      title: "Coins Credited 🎉",
+      body: `You have successfully received ${pack.coins} coins for the payment of ₹${pack.price}`,
+      type: "coin_credited",
+      createdAt: new Date(),
+    };
+
+    // Push notification to the user's notifications array
+    await User.updateOne({ _id: userId }, { $push: { notifications: coinAddedNotification } });
+
+    // 🔹 Push Notification via FCM (only if the user has an FCM token)
+    if (user.fcmToken) {
+      await sendSimplePush({
+        fcmToken: user.fcmToken,
+        title: "Coins Credited 🎉",
+        body: `You have successfully received ${pack.coins} coins for the payment of ₹${pack.price}`,
+        data: { type: "coin_credited", userId: userId.toString() },
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      message: "Payment completed, coins added successfully",
+      message: "Coins added successfully",
       paymentId: transactionId,
       coinsAdded: pack.coins,
       totalCoins: user.totalCoins,
@@ -73,6 +95,8 @@ export const createCoinOrder = async (req, res) => {
     });
   }
 };
+
+
 
 
 /* ================= VERIFY PAYMENT ================= */

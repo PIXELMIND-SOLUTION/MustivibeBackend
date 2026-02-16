@@ -38,6 +38,13 @@ const moderationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+
+      notifications: [{
+    title: { type: String },
+    body: { type: String },
+    type: { type: String },  // e.g., "follow", "unfollow", etc.
+    createdAt: { type: Date, default: Date.now }
+  }],
   },
   { timestamps: true }
 );

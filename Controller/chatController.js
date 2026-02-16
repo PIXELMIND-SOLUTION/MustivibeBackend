@@ -3,6 +3,8 @@ import Message from "../Models/Message.js";
 import CommunicationRequest from "../Models/CommunicationRequest.js";
 import User from "../Models/User.js";
 import fs from "fs";
+import mongoose from "mongoose";
+
 
 /* ================================
    HELPER FUNCTION: Get Relationship Status
@@ -199,6 +201,7 @@ export const sendMessage = async (req, res) => {
 /* ================================
    APPROVE CHAT REQUEST
 ================================ */
+// Approve Chat Request Controller
 export const approveChatRequest = async (req, res) => {
   try {
     const { userId, requesterId } = req.body;
@@ -271,6 +274,53 @@ export const approveChatRequest = async (req, res) => {
       { status: "sent" }
     );
 
+    // Create notifications for both users
+    const approvalNotificationForRequester = {
+      title: "Your chat request was approved ✅",
+      body: `${user.name} has approved your chat request.`,
+      type: "chat_approved",
+      createdAt: new Date(),
+    };
+
+    const approvalNotificationForUser = {
+      title: "You approved a chat request ✅",
+      body: `You have approved the chat request from ${requester.name}.`,
+      type: "chat_approved",
+      createdAt: new Date(),
+    };
+
+    // Send push notification to requester
+    if (requester.fcmToken) {
+      await sendSimplePush({
+        fcmToken: requester.fcmToken,
+        title: "Chat request approved ✅",
+        body: `${user.name} has approved your chat request.`,
+        data: { type: "chat_approved", fromUser: userId.toString() },
+      });
+
+      // Add notification to requester's notifications array
+      await User.updateOne(
+        { _id: requesterId },
+        { $push: { notifications: approvalNotificationForRequester } }
+      );
+    }
+
+    // Send push notification to the user who approved
+    if (user.fcmToken) {
+      await sendSimplePush({
+        fcmToken: user.fcmToken,
+        title: "You approved a chat request ✅",
+        body: `You have approved the chat request from ${requester.name}.`,
+        data: { type: "chat_approved", toUser: requesterId.toString() },
+      });
+
+      // Add notification to user's notifications array
+      await User.updateOne(
+        { _id: userId },
+        { $push: { notifications: approvalNotificationForUser } }
+      );
+    }
+
     // Get relationship status
     const relationship = await getRelationshipStatus(userId, requesterId);
 
@@ -295,8 +345,9 @@ export const approveChatRequest = async (req, res) => {
   }
 };
 
+
 /* ================================
-   REJECT CHAT REQUEST
+   Reject Chat Request Controller
 ================================ */
 export const rejectChatRequest = async (req, res) => {
   try {
@@ -358,9 +409,52 @@ export const rejectChatRequest = async (req, res) => {
     request.status = "rejected";
     await request.save();
 
-    // 7️⃣ (OPTIONAL but LOGICALLY CONSISTENT)
-    // Keep pending messages as pending (DO NOT deliver)
-    // No updateMany here — aligns with approve logic
+    // Create notifications for both users
+    const rejectionNotificationForRequester = {
+      title: "Your chat request was rejected ❌",
+      body: `${user.name} has rejected your chat request.`,
+      type: "chat_rejected",
+      createdAt: new Date(),
+    };
+
+    const rejectionNotificationForUser = {
+      title: "You rejected a chat request ❌",
+      body: `You have rejected the chat request from ${requester.name}.`,
+      type: "chat_rejected",
+      createdAt: new Date(),
+    };
+
+    // Send push notification to requester
+    if (requester.fcmToken) {
+      await sendSimplePush({
+        fcmToken: requester.fcmToken,
+        title: "Chat request rejected ❌",
+        body: `${user.name} has rejected your chat request.`,
+        data: { type: "chat_rejected", fromUser: userId.toString() },
+      });
+
+      // Add notification to requester's notifications array
+      await User.updateOne(
+        { _id: requesterId },
+        { $push: { notifications: rejectionNotificationForRequester } }
+      );
+    }
+
+    // Send push notification to the user who rejected
+    if (user.fcmToken) {
+      await sendSimplePush({
+        fcmToken: user.fcmToken,
+        title: "You rejected a chat request ❌",
+        body: `You have rejected the chat request from ${requester.name}.`,
+        data: { type: "chat_rejected", toUser: requesterId.toString() },
+      });
+
+      // Add notification to user's notifications array
+      await User.updateOne(
+        { _id: userId },
+        { $push: { notifications: rejectionNotificationForUser } }
+      );
+    }
 
     // 8️⃣ Relationship status
     const relationship = await getRelationshipStatus(userId, requesterId);
@@ -372,13 +466,7 @@ export const rejectChatRequest = async (req, res) => {
         isFollowing: relationship.isFollowing,
         isFollower: relationship.isFollower,
         isMutual: relationship.isMutual,
-        status: relationship.isMutual
-          ? "mutual"
-          : relationship.isFollowing
-          ? "following"
-          : relationship.isFollower
-          ? "follower"
-          : "none"
+        status: relationship.isMutual ? "mutual" : relationship.isFollowing ? "following" : relationship.isFollower ? "follower" : "none"
       }
     });
 
@@ -881,6 +969,71 @@ export const getRandomUsers = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: error.message
+    });
+  }
+};
+
+
+
+// ==================== GET ONLINE USERS (SIMPLE) ====================
+export const getRandomOnlineUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    // Current user
+    const currentUser = await User.findById(userId).select("followers following");
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // All online users except self
+    const onlineUsers = await User.find({
+      _id: { $ne: userId },
+      isOnline: true,
+      isPermanentlyBlocked: false,
+      isTemporarilyBlocked: false,
+    }).select("name nickname profileImage isOnline lastActive");
+
+    // ❌ No online users
+    if (onlineUsers.length === 0) {
+      return res.status(200).json({
+        success: false,
+        message: "No user available",
+        user: null,
+      });
+    }
+
+    // ✅ Pick ONE random user
+    const randomIndex = Math.floor(Math.random() * onlineUsers.length);
+    const user = onlineUsers[randomIndex];
+
+    // Prepare response (SINGLE USER)
+    const responseUser = {
+      _id: user._id,
+      name: user.name,
+      nickname: user.nickname,
+      profileImage: user.profileImage,
+      isOnline: user.isOnline,
+      lastActive: user.lastActive,
+      isFollow: currentUser.following.includes(user._id),
+      isFollowed: currentUser.followers.includes(user._id),
+      isChatApproved: false,
+    };
+
+    return res.status(200).json({
+      success: true,
+      user: responseUser,
+      message: "User found",
+    });
+
+  } catch (error) {
+    console.error("❌ getRandomOnlineUser error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
     });
   }
 };
