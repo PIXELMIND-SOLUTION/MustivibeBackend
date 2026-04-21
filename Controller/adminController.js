@@ -606,6 +606,96 @@ export const createCoinToRupee = async (req, res) => {
   }
 };
 
+
+export const editCoinToRupee = async (req, res) => {
+  try {
+    const { ratioId } = req.params;
+    const { coins, rupees } = req.body;
+
+    // Validate IDs and required fields
+    if (!mongoose.Types.ObjectId.isValid(ratioId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid CoinToRupee ratio ID"
+      });
+    }
+
+    if (!coins || !rupees) {
+      return res.status(400).json({
+        success: false,
+        message: "coins and rupees are required"
+      });
+    }
+
+    // Find the existing CoinToRupee record
+    const existingRatio = await CoinToRupee.findById(ratioId);
+    if (!existingRatio) {
+      return res.status(404).json({
+        success: false,
+        message: "Coin to Rupee ratio not found"
+      });
+    }
+
+    // Update the record
+    existingRatio.coins = coins;
+    existingRatio.rupees = rupees;
+
+    // Save the updated record
+    await existingRatio.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Coin to Rupee ratio updated successfully",
+      updatedRatio: existingRatio
+    });
+
+  } catch (error) {
+    console.error("editCoinToRupee error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+
+
+export const deleteCoinToRupee = async (req, res) => {
+  try {
+    const { ratioId } = req.params;
+
+    // Validate the ratio ID
+    if (!mongoose.Types.ObjectId.isValid(ratioId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid CoinToRupee ratio ID"
+      });
+    }
+
+    // Find and delete the CoinToRupee entry
+    const deletedRatio = await CoinToRupee.findByIdAndDelete(ratioId);
+    if (!deletedRatio) {
+      return res.status(404).json({
+        success: false,
+        message: "Coin to Rupee ratio not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Coin to Rupee ratio deleted successfully",
+      deletedRatio
+    });
+
+  } catch (error) {
+    console.error("deleteCoinToRupee error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 // Get the Coin to Rupee ratio
 export const getCoinToRupee = async (req, res) => {
   try {
@@ -682,6 +772,100 @@ export const createCoinDeductionRule = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ Error creating coin deduction rule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+export const editCoinDeductionRule = async (req, res) => {
+  try {
+    const { ruleId } = req.params;
+    const { type, duration, coins } = req.body;
+
+    // Validate IDs and required fields
+    if (!mongoose.Types.ObjectId.isValid(ruleId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Coin Deduction Rule ID"
+      });
+    }
+
+    if (!type || !duration || !coins) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields"
+      });
+    }
+
+    // Find the existing rule
+    const existingRule = await CoinDeductionRule.findById(ruleId);
+    if (!existingRule) {
+      return res.status(404).json({
+        success: false,
+        message: "Coin Deduction Rule not found"
+      });
+    }
+
+    // Update the rule
+    existingRule.type = type;
+    existingRule.duration = duration;
+    existingRule.coins = coins;
+
+    // Save the updated rule
+    await existingRule.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Coin Deduction Rule updated successfully",
+      updatedRule: existingRule
+    });
+
+  } catch (error) {
+    console.error("❌ Error updating coin deduction rule:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
+
+
+
+export const deleteCoinDeductionRule = async (req, res) => {
+  try {
+    const { ruleId } = req.params;
+
+    // Validate the rule ID
+    if (!mongoose.Types.ObjectId.isValid(ruleId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Coin Deduction Rule ID"
+      });
+    }
+
+    // Find and delete the Coin Deduction Rule entry
+    const deletedRule = await CoinDeductionRule.findByIdAndDelete(ruleId);
+    if (!deletedRule) {
+      return res.status(404).json({
+        success: false,
+        message: "Coin Deduction Rule not found"
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Coin Deduction Rule deleted successfully",
+      deletedRule
+    });
+
+  } catch (error) {
+    console.error("❌ Error deleting coin deduction rule:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",

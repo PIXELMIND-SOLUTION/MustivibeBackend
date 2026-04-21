@@ -26,8 +26,12 @@ router.put("/referral/:id", admin.updateReferralCoinsById);// update by id
 router.delete("/referral/:id", admin.deleteReferralCoins); // delete
 router.post("/createcointorupee", admin.createCoinToRupee);
 router.get("/getcointorupee", admin.getCoinToRupee);
+router.put('/update-cointorupee/:ratioId', admin.editCoinToRupee);
+router.delete('/delete-cointorupee/:ratioId', admin.deleteCoinToRupee);
 router.get('/coindeductionrules', admin.getAllCoinDeductionRules);
 router.post('/coindeductionrule', admin.createCoinDeductionRule);
+router.put('/update-coindeductionrule/:ruleId', admin.editCoinDeductionRule);
+router.delete('/delete-coindeductionrule/:ruleId', admin.deleteCoinDeductionRule);
 
 
 export default router;
