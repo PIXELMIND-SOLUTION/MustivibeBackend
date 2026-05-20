@@ -21,6 +21,12 @@ import Room from './Models/RoomModel.js';
 import { parse, format } from 'date-fns'; // Import date-fns
 
 
+import dns from 'dns';
+
+// Force using Google DNS
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
+
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
